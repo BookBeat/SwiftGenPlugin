@@ -39,9 +39,12 @@ extension SwiftGenPlugin: XcodeBuildToolPlugin {
     let fileManager = FileManager.default
 
     // Possible paths where there may be a config file (root of package, target dir.)
-    let configurations: [Path] = [context.xcodeProject.directory]
-      .map { $0.appending("swiftgen.yml") }
-      .filter { fileManager.fileExists(atPath: $0.string) }
+    let configurations: [Path] = [
+      context.xcodeProject.directory,
+      context.xcodeProject.directory.appending(subpath: target.displayName),
+    ]
+    .map { $0.appending("swiftgen.yml") }
+    .filter { fileManager.fileExists(atPath: $0.string) }
 
     // Validate paths list
     guard validate(configurations: configurations, target: target) else {
@@ -51,8 +54,12 @@ extension SwiftGenPlugin: XcodeBuildToolPlugin {
     // Clear the SwiftGen plugin's directory (in case of dangling files)
     fileManager.forceClean(directory: context.pluginWorkDirectory)
 
+      let outputDir = context.pluginWorkDirectory.appending("GeneratedFiles")
+      try FileManager.default.createDirectory(atPath: outputDir.string,
+                  withIntermediateDirectories: true)
+      
     return try configurations.map { configuration in
-      try .swiftgen(using: configuration, context: context, target: target)
+        try .swiftgen(using: configuration, context: context, target: target, outputDir: outputDir)
     }
   }
 }
@@ -113,7 +120,7 @@ private extension Command {
   }
 
 #if canImport(XcodeProjectPlugin)
-  static func swiftgen(using configuration: Path, context: XcodePluginContext, target: XcodeTarget) throws -> Command {
+    static func swiftgen(using configuration: Path, context: XcodePluginContext, target: XcodeTarget, outputDir: Path) throws -> Command {
     .prebuildCommand(
       displayName: "SwiftGen BuildTool Plugin",
       executable: try context.tool(named: "swiftgen").path,
@@ -126,9 +133,9 @@ private extension Command {
       environment: [
         "PROJECT_DIR": context.xcodeProject.directory,
         "TARGET_NAME": target.displayName,
-        "DERIVED_SOURCES_DIR": context.pluginWorkDirectory
+        "DERIVED_SOURCES_DIR": outputDir
       ],
-      outputFilesDirectory: context.pluginWorkDirectory
+      outputFilesDirectory: outputDir
     )
   }
 #endif
